@@ -1,8 +1,3 @@
-"""
-Webots HIL Controller with ESP32 Integration
-Dijkstra Path Planning with Sensor-Based Visualization and Obstacle Detection
-MODIFIED: Uses command-based odometry estimation instead of encoders.
-"""
 from controller import Robot, DistanceSensor, Motor
 import socket
 import time
@@ -11,37 +6,39 @@ import matplotlib.pyplot as plt
 import json
 
 # Network Configuration
-ESP32_IP_ADDRESS = "192.168.178.178" # Replace with your ESP32's IP
+ESP32_IP_ADDRESS = "192.168.178.178" # Replace with ESP32 IP
 ESP32_PORT = 8080
 
+# Parameters are in meters
 # Robot Parameters
-WHEEL_RADIUS = 0.0205  # meters
-AXLE_LENGTH = 0.057    # meters (distance between wheel centers)
+WHEEL_RADIUS = 0.0205  
+AXLE_LENGTH = 0.057    
 
 # Grid Configuration
 GRID_ROWS = 15
 GRID_COLS = 21
-GRID_CELL_SIZE = 0.051 # meters
+GRID_CELL_SIZE = 0.051 
 
-GRID_ORIGIN_X = 0.050002 # meters
-GRID_ORIGIN_Z = -0.639e-05 # meters
+GRID_ORIGIN_X = 0.050002 
+GRID_ORIGIN_Z = -0.639e-05 
 
 GOAL_ROW = 14
 GOAL_COL = 0
 
 # Parameters
-FORWARD_SPEED = 2.5 # rad/s (motor speed)
-LINE_THRESHOLD = 600 # For ground sensors
+FORWARD_SPEED = 2.5 # rad/s
+LINE_THRESHOLD = 600 # ground sensor line threshold
 
 # Distance Sensor Parameters
 DISTANCE_SENSOR_THRESHOLD = 300
-OBSTACLE_DETECTION_ENABLED = True
+OBSTACLE_DETECTION_ENABLED = True # off to bypass
 
+# Time unit in seconds
 # Turning Parameters
 TURN_SPEED_FACTOR = 1.2
-MIN_INITIAL_SPIN_DURATION = 0.8 # seconds
-MAX_SEARCH_SPIN_DURATION = 20.0 # seconds
-MAX_ADJUST_DURATION = 5.0   # seconds
+MIN_INITIAL_SPIN_DURATION = 0.8 
+MAX_SEARCH_SPIN_DURATION = 20.0 
+MAX_ADJUST_DURATION = 5.0   
 TURN_ADJUST_BASE_SPEED = FORWARD_SPEED * 0.8
 TURN_UNTIL_LINE_FOUND = True
 
@@ -51,13 +48,20 @@ MODERATE_CORRECTION_DIFFERENTIAL = FORWARD_SPEED * 0.8
 
 # World grid definition
 world_grid = [
-    [1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,1,0,1,0,1,0],[1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,1,0,1,0,1,0],
-    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],[0,1,1,1,1,1,1,1,1,1,0,1,1,1,1,1,1,1,1,1,0],
-    [0,1,1,1,1,1,1,1,1,1,0,1,1,1,1,1,1,1,1,1,0],[0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,0],
-    [0,1,1,1,1,1,1,1,1,1,0,1,1,1,1,1,1,1,1,1,0],[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
-    [0,1,1,1,1,1,1,1,1,1,0,1,1,1,1,1,1,1,1,1,0],[0,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0],
-    [0,1,1,1,1,1,1,1,1,1,0,1,1,1,1,1,1,1,1,1,0],[0,1,1,1,1,1,1,1,1,1,0,1,1,1,1,1,1,1,1,1,0],
-    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],[0,1,0,1,0,1,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+    [1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,1,0,1,0,1,0],
+    [1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,1,0,1,0,1,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,1,1,1,1,1,1,1,1,1,0,1,1,1,1,1,1,1,1,1,0],
+    [0,1,1,1,1,1,1,1,1,1,0,1,1,1,1,1,1,1,1,1,0],
+    [0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,0],
+    [0,1,1,1,1,1,1,1,1,1,0,1,1,1,1,1,1,1,1,1,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,1,1,1,1,1,1,1,1,1,0,1,1,1,1,1,1,1,1,1,0],
+    [0,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0],
+    [0,1,1,1,1,1,1,1,1,1,0,1,1,1,1,1,1,1,1,1,0],
+    [0,1,1,1,1,1,1,1,1,1,0,1,1,1,1,1,1,1,1,1,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,1,0,1,0,1,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
     [0,1,0,1,0,1,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1]
 ]
 
@@ -73,7 +77,7 @@ for obs_row, obs_col in SIMULATED_STATIC_OBSTACLES:
         print(f"INFO: Simulated static obstacle added at ({obs_row}, {obs_col})")
 
 plt.ion()
-fig, ax = None, None # Initialize plot variables
+fig, ax = None, None # Initialise plot 
 robot_trail_world = []
 planned_path_grid = []
 webots_internal_turn_phase = 'NONE'
@@ -231,11 +235,6 @@ while robot.step(timestep) != -1:
     ps_values_all = [p.getValue() for p in ps_all]
     current_dist_sens_vals = [ps_values_all[0], ps_values_all[7], ps_values_all[5]]
 
-    # --- Command-Based Odometry ESTIMATION ---
-    # Estimate displacement based on motor speeds set in the *previous* step and time_step_sec
-    # This happens BEFORE new motor speeds for the current step are decided/set
-    # Note: current_left_speed and current_right_speed are from the *end* of the previous loop iteration
-    
     # Linear speed of each wheel (m/s)
     v_left = current_left_speed * WHEEL_RADIUS
     v_right = current_right_speed * WHEEL_RADIUS
@@ -301,73 +300,119 @@ while robot.step(timestep) != -1:
     except socket.timeout: pass
     except Exception as e: print(f"Recv Err: {e}"); is_connected=False; client_socket.close(); client_socket=None; continue
 
-    # --- Determine Effective Command ---
-    effective_command = esp32_command; sensors_on_line = any(line_detected)
-    if esp32_command not in ['turn_left','turn_right'] and webots_internal_turn_phase!='NONE':
-        webots_internal_turn_phase='NONE'; webots_turn_command_active=None
-    if webots_internal_turn_phase!='NONE':
-        if esp32_command=='stop': effective_command='stop'; webots_internal_turn_phase='NONE'; webots_turn_command_active=None
-        else: effective_command = webots_turn_command_active
-    elif sensors_on_line and esp32_command not in ['turn_left','turn_right','stop']: effective_command = 'forward'
-    elif not sensors_on_line and esp32_command == 'forward': effective_command = 'turn_left'
-    if esp32_command=='stop' and not sensors_on_line and effective_command=='stop':
-        print(f"INFO: ESP 'stop', off-line. Webots overriding to 'turn_left'."); effective_command='turn_left'
-        if webots_internal_turn_phase=='NONE' or webots_turn_command_active!='turn_left':
-            webots_turn_command_active='turn_left'; webots_internal_turn_phase='INITIATE_SPIN'; turn_phase_start_time=current_sim_time
-            print(f"Webots Override: Turn {webots_turn_command_active} initiated.")
+ # --- Determine Effective Command ---
+    effective_command = esp32_command  # Default to ESP32 command
+    sensors_on_line = any(line_detected)
 
-    # --- Execute Command & Set Motor Speeds for *next* step's odometry calculation ---
-    next_left_speed, next_right_speed = 0.0, 0.0 # Speeds to be applied for current step
-    if effective_command == 'stop': next_left_speed,next_right_speed = 0.0,0.0; webots_internal_turn_phase='NONE';webots_turn_command_active=None
+    # 1. Handle ongoing Webots-internal turns
+    if webots_internal_turn_phase != 'NONE':
+        if esp32_command == 'stop': # ESP32 can interrupt an internal turn with 'stop'
+            effective_command = 'stop'
+            webots_internal_turn_phase = 'NONE'
+            webots_turn_command_active = None
+        else: # Otherwise, Webots continues its current turn
+            effective_command = webots_turn_command_active
+    # 2. Sensor overrides if not in an internal turn
+    elif sensors_on_line and esp32_command not in ['turn_left', 'turn_right', 'stop']:
+        effective_command = 'forward' # Override: Follow line if ESP isn't turning/stopping
+    elif not sensors_on_line and esp32_command == 'forward':
+        effective_command = 'turn_left' # Override: Search for line if ESP says forward but none detected
+    
+    # 3. Specific override: If ESP32 commanded 'stop', but robot is off-line and not already turning to search
+    if esp32_command == 'stop' and not sensors_on_line and effective_command == 'stop':
+        print(f"INFO: ESP 'stop', off-line. Webots overriding to 'turn_left'.")
+        effective_command = 'turn_left'
+
+    # --- Execute Command & Set Motor Speeds ---
+    next_left_speed, next_right_speed = 0.0, 0.0
+
+    if effective_command == 'stop':
+        next_left_speed, next_right_speed = 0.0, 0.0
+        webots_internal_turn_phase = 'NONE'
+        webots_turn_command_active = None
+
     elif effective_command == 'forward':
-        webots_internal_turn_phase='NONE';webots_turn_command_active=None; base_s = FORWARD_SPEED
+        webots_internal_turn_phase = 'NONE' # Stop any ongoing turn if commanded forward
+        webots_turn_command_active = None
+        base_s = FORWARD_SPEED
+        # Line following logic, change parameter on top
         if not left_gs and center_gs and not right_gs: next_left_speed,next_right_speed = base_s,base_s
         elif left_gs and center_gs and not right_gs: next_left_speed,next_right_speed = base_s-MODERATE_CORRECTION_DIFFERENTIAL,base_s
         elif not left_gs and center_gs and right_gs: next_left_speed,next_right_speed = base_s,base_s-MODERATE_CORRECTION_DIFFERENTIAL
         elif left_gs and not center_gs and not right_gs: next_left_speed,next_right_speed = base_s-AGGRESSIVE_CORRECTION_DIFFERENTIAL,base_s
         elif not left_gs and not center_gs and right_gs: next_left_speed,next_right_speed = base_s,base_s-AGGRESSIVE_CORRECTION_DIFFERENTIAL
         elif left_gs and center_gs and right_gs: next_left_speed,next_right_speed = base_s*0.7,base_s*0.7
-        elif not sensors_on_line: next_left_speed,next_right_speed = base_s*0.2,base_s*0.2
-        else: next_left_speed,next_right_speed = base_s*0.3,base_s*0.3
-    elif effective_command in ['turn_left','turn_right']:
-        curr_turn_cmd = effective_command
-        if webots_turn_command_active!=curr_turn_cmd or webots_internal_turn_phase=='NONE':
-            webots_turn_command_active=curr_turn_cmd;webots_internal_turn_phase='INITIATE_SPIN';turn_phase_start_time=current_sim_time
+        elif not sensors_on_line: next_left_speed,next_right_speed = base_s*0.2,base_s*0.2 # Lost line
+        else: next_left_speed,next_right_speed = base_s*0.3,base_s*0.3 # Other cases (e.g., only one side sensor on)
+
+    elif effective_command in ['turn_left', 'turn_right']:
+        current_turn_cmd = effective_command
+        # Initiate or continue turn sequence
+        if webots_turn_command_active != current_turn_cmd or webots_internal_turn_phase == 'NONE':
+            webots_turn_command_active = current_turn_cmd
+            webots_internal_turn_phase = 'INITIATE_SPIN'
+            turn_phase_start_time = current_sim_time
             print(f"Turn {webots_turn_command_active} initiated.")
-        if webots_internal_turn_phase=='INITIATE_SPIN':
-            s_i,s_o = -FORWARD_SPEED*TURN_SPEED_FACTOR*0.8, FORWARD_SPEED*TURN_SPEED_FACTOR*1.1
-            next_left_speed,next_right_speed = (s_i,s_o) if webots_turn_command_active=='turn_left' else (s_o,s_i)
-            if current_sim_time-turn_phase_start_time > MIN_INITIAL_SPIN_DURATION: webots_internal_turn_phase='SEARCHING_LINE';turn_phase_start_time=current_sim_time;print(f"🔍 Search for {webots_turn_command_active}")
-        elif webots_internal_turn_phase=='SEARCHING_LINE':
-            s_i,s_o = -FORWARD_SPEED*TURN_SPEED_FACTOR*0.5, FORWARD_SPEED*TURN_SPEED_FACTOR*0.9
-            next_left_speed,next_right_speed = (s_i,s_o) if webots_turn_command_active=='turn_left' else (s_o,s_i)
-            if sensors_on_line: webots_internal_turn_phase='ADJUSTING_ON_LINE';turn_phase_start_time=current_sim_time;print(f"✅ Line acquired {webots_turn_command_active}")
-            elif not TURN_UNTIL_LINE_FOUND and current_sim_time-turn_phase_start_time>MAX_SEARCH_SPIN_DURATION: print(f"⏰ Search Timeout {webots_turn_command_active}");webots_internal_turn_phase='NONE';next_left_speed,next_right_speed=0,0
-        elif webots_internal_turn_phase=='ADJUSTING_ON_LINE':
-          b = TURN_ADJUST_BASE_SPEED
-          m_d = MODERATE_CORRECTION_DIFFERENTIAL * (b / FORWARD_SPEED)
-          a_d = AGGRESSIVE_CORRECTION_DIFFERENTIAL * (b / FORWARD_SPEED)
-          if not left_gs and center_gs and not right_gs: next_left_speed,next_right_speed=b*0.3,b*0.3; webots_internal_turn_phase='NONE';webots_turn_command_active=None
-          elif left_gs and center_gs and not right_gs: next_left_speed,next_right_speed = b-m_d,b
-          elif not left_gs and center_gs and right_gs: next_left_speed,next_right_speed = b,b-m_d
-          elif left_gs and not center_gs and not right_gs: next_left_speed,next_right_speed = b-a_d,b
-          elif not left_gs and not center_gs and right_gs: next_left_speed,next_right_speed = b,b-a_d
-          elif not sensors_on_line: print(f"❌ Line lost during adjust. Re-search.");webots_internal_turn_phase='SEARCHING_LINE';turn_phase_start_time=current_sim_time
-          else: next_left_speed,next_right_speed = b*0.7,b*0.7
-          if current_sim_time-turn_phase_start_time>MAX_ADJUST_DURATION: print(f"⏰ Adjust Timeout {webots_turn_command_active}");webots_internal_turn_phase='NONE';webots_turn_command_active=None;next_left_speed,next_right_speed=0,0
+
+        # Handle turn phases
+        if webots_internal_turn_phase == 'INITIATE_SPIN':
+            s_i, s_o = -FORWARD_SPEED * TURN_SPEED_FACTOR * 0.8, FORWARD_SPEED * TURN_SPEED_FACTOR * 1.1
+            next_left_speed, next_right_speed = (s_i, s_o) if webots_turn_command_active == 'turn_left' else (s_o, s_i)
+            if current_sim_time - turn_phase_start_time > MIN_INITIAL_SPIN_DURATION:
+                webots_internal_turn_phase = 'SEARCHING_LINE'
+                turn_phase_start_time = current_sim_time
+                print(f"🔍 Search for {webots_turn_command_active}")
+        elif webots_internal_turn_phase == 'SEARCHING_LINE':
+            s_i, s_o = -FORWARD_SPEED * TURN_SPEED_FACTOR * 0.5, FORWARD_SPEED * TURN_SPEED_FACTOR * 0.9
+            next_left_speed, next_right_speed = (s_i, s_o) if webots_turn_command_active == 'turn_left' else (s_o, s_i)
+            if sensors_on_line:
+                webots_internal_turn_phase = 'ADJUSTING_ON_LINE'
+                turn_phase_start_time = current_sim_time
+                print(f"✅ Line acquired {webots_turn_command_active}")
+            elif not TURN_UNTIL_LINE_FOUND and current_sim_time - turn_phase_start_time > MAX_SEARCH_SPIN_DURATION:
+                print(f"⏰ Search Timeout {webots_turn_command_active}")
+                webots_internal_turn_phase = 'NONE'
+                next_left_speed, next_right_speed = 0,0
+        elif webots_internal_turn_phase == 'ADJUSTING_ON_LINE':
+            b = TURN_ADJUST_BASE_SPEED
+            m_d = MODERATE_CORRECTION_DIFFERENTIAL * (b / FORWARD_SPEED)
+            a_d = AGGRESSIVE_CORRECTION_DIFFERENTIAL * (b / FORWARD_SPEED)
+            if not left_gs and center_gs and not right_gs: # Perfect center
+                next_left_speed, next_right_speed = b * 0.3, b * 0.3
+                webots_internal_turn_phase = 'NONE'
+                webots_turn_command_active = None
+            elif left_gs and center_gs and not right_gs: next_left_speed,next_right_speed = b-m_d,b
+            elif not left_gs and center_gs and right_gs: next_left_speed,next_right_speed = b,b-m_d
+            elif left_gs and not center_gs and not right_gs: next_left_speed,next_right_speed = b-a_d,b
+            elif not left_gs and not center_gs and right_gs: next_left_speed,next_right_speed = b,b-a_d
+            elif not sensors_on_line: # Line lost during adjustment
+                print(f"❌ Line lost during adjust. Re-search.")
+                webots_internal_turn_phase = 'SEARCHING_LINE'
+                turn_phase_start_time = current_sim_time
+                # Speeds for searching will be set in the next iteration by SEARCHING_LINE phase
+            else: # Other cases on line (e.g., all sensors on)
+                next_left_speed, next_right_speed = b * 0.7, b * 0.7
+            
+            if current_sim_time - turn_phase_start_time > MAX_ADJUST_DURATION and webots_internal_turn_phase == 'ADJUSTING_ON_LINE': # Check phase again
+                print(f"⏰ Adjust Timeout {webots_turn_command_active}")
+                webots_internal_turn_phase = 'NONE'
+                webots_turn_command_active = None
+                next_left_speed,next_right_speed=0,0
     
+    # Apply motor velocities
     left_motor.setVelocity(next_left_speed)
     right_motor.setVelocity(next_right_speed)
-    current_left_speed, current_right_speed = next_left_speed, next_right_speed # Store for next step's estimation
+    current_left_speed, current_right_speed = next_left_speed, next_right_speed # Store for next step's odometry estimation
 
     # --- Visualization & Logging ---
     if iteration % 3 == 0: update_visualization(rwp_estimate, crgp_estimated, planned_path_grid)
     if iteration % 25 == 0:
-        conn_stat,line_stat = ("Conn" if is_connected else "Disc"),("ON" if sensors_on_line else "OFF")
-        obs_stat = f"Obs:{len(detected_obstacles_grid)}" if detected_obstacles_grid else "NoObs"
+        conn_stat = ("Yes" if is_connected else "No")
+        line_s = ("ON" if sensors_on_line else "OFF")
+        obs_s = f"Obst:{len(detected_obstacles_grid)}" if detected_obstacles_grid else "Null"
         turn_s = f"T:{webots_internal_turn_phase}" if webots_internal_turn_phase!='NONE' else ""
         cmd_d = f"{esp32_command}" if esp32_command==effective_command else f"{esp32_command}→{effective_command}"
-        print(f"T:{current_sim_time:.1f}|ESP:{conn_stat}|Cmd:{cmd_d}|Grid:{crgp_estimated}|L:{line_stat}{line_detected}|{obs_stat}|{turn_s}")
+        print(f"T:{current_sim_time:.1f}|ESP:{conn_stat}|Cmd:{cmd_d}|Grid:{crgp_estimated}|L:{line_s}{line_detected}|{obs_s}|{turn_s}")
 
 # --- Cleanup ---
 if client_socket:
