@@ -57,7 +57,7 @@ path_needs_replan = True
 last_replan_time = 0
 REPLAN_INTERVAL_MS = 1000
 
-# Djickstra Algorithm
+# Dijkkstra Algorithm
 class SimplePriorityQueue:
     def __init__(self):
         self._queue = []
