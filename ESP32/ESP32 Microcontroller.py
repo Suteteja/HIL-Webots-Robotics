@@ -1,7 +1,6 @@
 # ESP32 MicroPython Controller with Dijkstra's Algorithm for Webots HIL
 # Albert Jestin Sutedja / 466092 Hanze / 4/6/25
-# Code designed by Albert + Inspo & Assistance from Simon
-# ESP Connection design from Simon
+# Code designed by Albert + Inspo & Assistance from Simonf8
 
 # Step-by-step
 # 1. Run ESP Code
