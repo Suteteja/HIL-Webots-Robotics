@@ -1,7 +1,12 @@
 # ESP32 MicroPython Controller with Dijkstra's Algorithm for Webots HIL
 # Albert Jestin Sutedja / 466092 Hanze
-# Code designed by Albert + Inspo & Assistance from Simon
+# Code designed by Albert + Inspo from Simon
 # ESP Connection design from Simon
+
+# Step-by-step
+# 1. Run ESP Code
+# 2. Get ESP IP Address (Shell)
+# 3. Edit webots code
 
 import network
 import socket
@@ -10,16 +15,16 @@ import time
 import gc
 from machine import Pin
 import math
-
-# --- WiFi Configuration ---
-WIFI_SSID = 'Ziggo4976744'        # Replace with your WiFi SSID
-WIFI_PASSWORD = 'rzfpwr7fyyHf' # Replace with your WiFi password
+# --- Configs ---
+# WiFi Configuration
+WIFI_SSID = '' # WiFi SSID
+WIFI_PASSWORD = '' # WiFi password
 SERVER_PORT = 8080
 
-# --- Onboard LED ---
+# Onboard LED 
 led = Pin(2, Pin.OUT) # ESP32 onboard LED, usually GPIO2
 
-# --- Grid Configuration (Must match Webots) ---
+# Grid Configuration (Must match Webots) 
 GRID_ROWS = 15
 GRID_COLS = 21
 # 0 = BLACK LINE (pathable)
@@ -42,7 +47,7 @@ grid_map = [
     [0,1,0,1,0,1,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1]
 ]
 
-# --- Path Planning State ---
+# Path Planning
 current_robot_grid_pos_actual = None
 current_robot_grid_pos_path = None
 goal_grid_pos = None
@@ -52,7 +57,7 @@ path_needs_replan = True
 last_replan_time = 0
 REPLAN_INTERVAL_MS = 1000
 
-# --- Dijkstra's Algorithm Implementation ---
+# Djickstra Algorithm
 class SimplePriorityQueue:
     def __init__(self):
         self._queue = []
@@ -120,7 +125,7 @@ def dijkstra(grid, start_node, end_node):
         return []
     return path
 
-# --- WiFi Connection ---
+# WiFi Connection
 def connect_wifi(ssid, password):
     wlan = network.WLAN(network.STA_IF)
     wlan.active(True)
@@ -140,7 +145,7 @@ def connect_wifi(ssid, password):
         print('\nWiFi Connection Failed.')
         return None
 
-# --- Server Setup ---
+# Server Setup
 def start_server(port):
     addr = socket.getaddrinfo('0.0.0.0', port)[0][-1]
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -150,7 +155,7 @@ def start_server(port):
     print(f'ESP32 server listening on port {port}')
     return s
 
-# --- Main Logic to Determine Action based on Path ---
+# Main Logic to Determine Action based on Path
 def get_action_from_path(robot_pos_on_path, world_theta_rad, webots_line_sensors_binary):
     global planned_path, current_path_index, goal_grid_pos
 
@@ -269,11 +274,7 @@ if __name__ == "__main__":
                                                     grid_map[obs_row][obs_col] = 1 # Mark as obstacle
                                                     map_updated_by_obstacles = True
                                                     print(f"ESP Map Updated: Obstacle added at ({obs_row}, {obs_col})")
-                                            else:
-                                                print(f"WARN: Obstacle coord ({obs_row},{obs_col}) from Webots out of bounds.")
-                                        # else:
-                                            # print(f"WARN: Invalid obstacle format received: {obs_coord_list}") # Optional: for debugging format issues
-                                
+                                            
                                 if map_updated_by_obstacles:
                                     path_needs_replan = True
                                     print("ESP: Grid map updated with new obstacles, forcing replan.")
