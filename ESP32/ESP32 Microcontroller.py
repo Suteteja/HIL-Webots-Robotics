@@ -17,8 +17,8 @@ import math
 
 # --- Configs ---
 # WiFi Configuration
-WIFI_SSID = 'HANZE-ZP11' # WiFi SSID
-WIFI_PASSWORD = 'sqr274YzW6' # WiFi password
+WIFI_SSID = '' # WiFi SSID
+WIFI_PASSWORD = '' # WiFi password
 SERVER_PORT = 8080
 
 # Onboard LED
