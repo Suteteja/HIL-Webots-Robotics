@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 import json
 
 # Network Configuration
-ESP32_IP_ADDRESS = "192.168.178.178" # Replace with ESP32 IP
+ESP32_IP_ADDRESS = "" # Replace with ESP32 IP
 ESP32_PORT = 8080
 
 # Parameters are in meters
