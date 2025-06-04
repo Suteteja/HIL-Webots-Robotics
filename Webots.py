@@ -1,3 +1,7 @@
+# Webots code for HIL
+# Albert Jestin Sutedja / 466092 Hanze / 4/6/25
+# Grid functionality inspo from Simonf8
+
 from controller import Robot, DistanceSensor, Motor
 import socket
 import time
