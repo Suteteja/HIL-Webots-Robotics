@@ -1,6 +1,6 @@
 # ESP32 MicroPython Controller with Dijkstra's Algorithm for Webots HIL
 # Albert Jestin Sutedja / 466092 Hanze
-# Code designed by Albert + Inspo from Simon
+# Code designed by Albert + Inspo & Assistance from Simon
 # ESP Connection design from Simon
 
 # Step-by-step
@@ -15,16 +15,17 @@ import time
 import gc
 from machine import Pin
 import math
+
 # --- Configs ---
 # WiFi Configuration
-WIFI_SSID = '' # WiFi SSID
-WIFI_PASSWORD = '' # WiFi password
+WIFI_SSID = 'HANZE-ZP11' # WiFi SSID
+WIFI_PASSWORD = 'sqr274YzW6' # WiFi password
 SERVER_PORT = 8080
 
-# Onboard LED 
+# Onboard LED
 led = Pin(2, Pin.OUT) # ESP32 onboard LED, usually GPIO2
 
-# Grid Configuration (Must match Webots) 
+# Grid Configuration (Must match Webots)
 GRID_ROWS = 15
 GRID_COLS = 21
 # 0 = BLACK LINE (pathable)
@@ -120,8 +121,8 @@ def dijkstra(grid, start_node, end_node):
         node = came_from.get(node)
     path.reverse()
     
-    if path[0] != start_node :
-        print(f"Dijkstra WARNING: Path does not start at start_node! Starts at {path[0]}")
+    if not path or path[0] != start_node : 
+        print(f"Dijkstra WARNING: Path issue. Starts at {path[0] if path else 'N/A'}, expected {start_node}")
         return []
     return path
 
@@ -232,13 +233,13 @@ if __name__ == "__main__":
                     led.on()
                     path_needs_replan = True
                 except OSError as e:
-                    if e.args[0] == 116: # ETIMEDOUT
-                         pass
+                    if e.args[0] == 116: # ETIMEDOUT - For server_socket.accept()
+                        pass # Silently continue waiting if accept times out
                     else:
-                         print(f"Accept error: {e}")
-                         conn = None
-                    time.sleep(0.5)
-                    continue
+                        print(f"Accept error: {e}") 
+                        conn = None 
+                    time.sleep(0.5) 
+                    continue 
                 except Exception as e:
                     print(f"Unexpected accept error: {e}")
                     conn = None
@@ -262,7 +263,6 @@ if __name__ == "__main__":
                                 robot_theta_rad_from_webots = world_pose_data.get('theta_rad', 0.0)
                                 line_sensors_binary_from_webots = webots_data.get('sensors_binary', [0,0,0])
                                 
-                                # **** START: Process detected obstacles from Webots ****
                                 obstacles_from_webots = webots_data.get('detected_obstacles', [])
                                 map_updated_by_obstacles = False
                                 if obstacles_from_webots:
@@ -270,15 +270,14 @@ if __name__ == "__main__":
                                         if isinstance(obs_coord_list, list) and len(obs_coord_list) == 2:
                                             obs_row, obs_col = obs_coord_list[0], obs_coord_list[1]
                                             if 0 <= obs_row < GRID_ROWS and 0 <= obs_col < GRID_COLS:
-                                                if grid_map[obs_row][obs_col] == 0: # If it was a pathable tile
-                                                    grid_map[obs_row][obs_col] = 1 # Mark as obstacle
+                                                if grid_map[obs_row][obs_col] == 0:
+                                                    grid_map[obs_row][obs_col] = 1
                                                     map_updated_by_obstacles = True
                                                     print(f"ESP Map Updated: Obstacle added at ({obs_row}, {obs_col})")
-                                            
+                                
                                 if map_updated_by_obstacles:
                                     path_needs_replan = True
-                                    print("ESP: Grid map updated with new obstacles, forcing replan.")
-                                # **** END: Process detected obstacles from Webots ****
+                                    print("ESP: Grid map updated, forcing replan.")
 
                                 if new_robot_pos_actual != current_robot_grid_pos_actual:
                                     current_robot_grid_pos_actual = new_robot_pos_actual
@@ -301,7 +300,7 @@ if __name__ == "__main__":
                                 if path_needs_replan or (time.ticks_diff(current_time_ms, last_replan_time) > REPLAN_INTERVAL_MS):
                                     if current_robot_grid_pos_actual and goal_grid_pos:
                                         gc.collect()
-                                        new_path = dijkstra(grid_map, current_robot_grid_pos_actual, goal_grid_pos) # Uses potentially updated grid_map
+                                        new_path = dijkstra(grid_map, current_robot_grid_pos_actual, goal_grid_pos)
                                         gc.collect()
                                         
                                         if new_path:
@@ -320,14 +319,15 @@ if __name__ == "__main__":
                                             path_needs_replan = False
                                             last_replan_time = current_time_ms
                                         else:
-                                            print("Failed to generate new path. Will retry or stop if goal is invalid.")
-                                            planned_path = []
-                                            path_needs_replan = True
+                                            print("ESP: Dijkstra failed to generate new path.") 
+                                            planned_path = [] 
+                                            path_needs_replan = True 
                                     else:
                                         print("Cannot replan: robot current position or goal position is unknown.")
                                 
-                                action_to_send = 'stop'
-                                if planned_path and current_robot_grid_pos_path and goal_grid_pos:
+                                action_to_send = 'stop' 
+                                
+                                if planned_path and current_robot_grid_pos_path and goal_grid_pos: 
                                     action_to_send, _ = get_action_from_path(
                                         current_robot_grid_pos_path,
                                         robot_theta_rad_from_webots,
@@ -340,11 +340,14 @@ if __name__ == "__main__":
                                             current_path_index += 1
                                             current_robot_grid_pos_path = prospective_next_node_on_path
 
-                                if current_robot_grid_pos_actual == goal_grid_pos:
+                                elif current_robot_grid_pos_actual == goal_grid_pos: 
                                     action_to_send = 'stop'
                                     print("🎉 Goal Reached (actual pos matches goal)! Sending STOP.")
-                                    planned_path = []
+                                    planned_path = [] 
                                     path_needs_replan = False
+                                elif not planned_path: 
+                                        print("ESP: No path. Sending STOP.")
+
 
                                 command_to_webots = {
                                     'type': 'esp32_command',
@@ -371,23 +374,24 @@ if __name__ == "__main__":
                     path_needs_replan = True
 
             except OSError as e:
-                if e.args[0] == 116:
-                    pass
-                elif e.args[0] == 104:
+                if e.args[0] == 116: # ETIMEDOUT on recv
+                    pass # Normal for non-blocking recv, just means no data yet
+                elif e.args[0] == 104: # ECONNRESET 
                     print("Webots connection reset by peer.")
                     if conn: conn.close()
                     conn = None
                     led.off()
-                else:
+                else: # Other OS errors during recv/send
                     print(f"Socket recv/send OS error: {e}")
                     if conn: conn.close()
-                    conn = None
+                    conn = None 
                     led.off()
-            except Exception as e:
+            except Exception as e: 
                 print(f"Main communication loop error: {e}")
                 if conn: conn.close()
-                conn = None
+                conn = None 
                 led.off()
-                time.sleep(1)
+                time.sleep(1) 
 
             time.sleep(0.02)
+
