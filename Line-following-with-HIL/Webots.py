@@ -2,6 +2,14 @@
 # Albert Jestin Sutedja / 466092 Hanze / 4/6/25
 # Grid functionality inspo from Simonf8
 
+"""
+Tuning:
+MIN_INITIAL_SPIN_DURATION(49)
+AGGRESIVE_CORRECTION, MODERATE_CORRECTION(57,58)
+INITIATE_SPIN(402)
+SEARCHING_LINE(409)
+"""
+
 from controller import Robot, DistanceSensor, Motor
 import socket
 import time
@@ -16,7 +24,7 @@ ESP32_PORT = 8080
 # Parameters are in meters
 # Robot Parameters
 WHEEL_RADIUS = 0.0205
-AXLE_LENGTH = 0.057
+AXLE_LENGTH = 0.058
 
 # Grid Configuration
 GRID_ROWS = 15
@@ -26,29 +34,30 @@ GRID_CELL_SIZE = 0.051
 GRID_ORIGIN_X = 0.050002
 GRID_ORIGIN_Z = -0.639e-05
 
+# Finish line
 GOAL_ROW = 14
 GOAL_COL = 0
 
-# Parameters
-FORWARD_SPEED = 2.5 # rad/s
+# Ground Sensor Parameters
+FORWARD_SPEED = 3 # rad/s
 LINE_THRESHOLD = 600 # ground sensor line threshold
 
 # Distance Sensor Parameters
-DISTANCE_SENSOR_THRESHOLD = 300
+DISTANCE_SENSOR_THRESHOLD = 100
 OBSTACLE_DETECTION_ENABLED = True # off to bypass
 
 # Time unit in seconds
 # Turning Parameters
-TURN_SPEED_FACTOR = 1.2
-MIN_INITIAL_SPIN_DURATION = 0.55
+TURN_SPEED_FACTOR = 1
+MIN_INITIAL_SPIN_DURATION = 0.35
 MAX_SEARCH_SPIN_DURATION = 20.0
 MAX_ADJUST_DURATION = 5.0
-TURN_ADJUST_BASE_SPEED = FORWARD_SPEED * 0.8
+TURN_ADJUST_BASE_SPEED = FORWARD_SPEED * 0.5
 TURN_UNTIL_LINE_FOUND = True
 
 # Line Centering Parameters
-AGGRESSIVE_CORRECTION_DIFFERENTIAL = FORWARD_SPEED * 1.0
-MODERATE_CORRECTION_DIFFERENTIAL = FORWARD_SPEED * 0.8
+AGGRESSIVE_CORRECTION_DIFFERENTIAL = FORWARD_SPEED * 1.3
+MODERATE_CORRECTION_DIFFERENTIAL = FORWARD_SPEED * 1.2
 
 # World grid definition
 world_grid = [
@@ -69,7 +78,7 @@ world_grid = [
     [0,1,0,1,0,1,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1]
 ]
 
-SIMULATED_STATIC_OBSTACLES = [(5, 10)]
+SIMULATED_STATIC_OBSTACLES = [(0, 18)]
 detected_obstacles_grid = set()
 recent_new_obstacles = []
 
@@ -134,7 +143,7 @@ def update_visualization(rwp_val, crgp_val, path_esp):
 
     if fig is None:
         fig, ax = plt.subplots(figsize=(12, 9))
-        ax.set_aspect('equal'); ax.set_title('HIL Navigation (Command-Based Odometry)', fontsize=14, fontweight='bold')
+        ax.set_aspect('equal'); ax.set_title('Grid Map', fontsize=14, fontweight='bold')
         ax.set_xlabel('World X (m)'); ax.set_ylabel('World Z (m)')
         for r_idx in range(GRID_ROWS + 1): ax.plot([GRID_ORIGIN_X, GRID_ORIGIN_X + GRID_COLS * GRID_CELL_SIZE], [GRID_ORIGIN_Z + r_idx * GRID_CELL_SIZE]*2, 'k-', alpha=0.2, lw=0.5)
         for c_idx in range(GRID_COLS + 1): ax.plot([GRID_ORIGIN_X + c_idx * GRID_CELL_SIZE]*2, [GRID_ORIGIN_Z, GRID_ORIGIN_Z + GRID_ROWS * GRID_CELL_SIZE], 'k-', alpha=0.2, lw=0.5)
@@ -199,7 +208,7 @@ def update_visualization(rwp_val, crgp_val, path_esp):
     
     info_txt = (f"Grid:{crgp_val} G:({GOAL_ROW},{GOAL_COL})\nLine:{'ON' if any(line_det_viz) else 'OFF'} {line_det_viz}\n"
                 f"Obs:{len(detected_obstacles_grid)} Turn:{webots_internal_turn_phase}\n"
-                f"Est.W:X={rwp_val['x']:.2f},Z={rwp_val['z']:.2f},Θ={math.degrees(rwp_val['theta']):.0f}°")
+                f"X={rwp_val['x']:.2f},Z={rwp_val['z']:.2f},Θ={math.degrees(rwp_val['theta']):.0f}°")
     ax.info_panel_text_obj = ax.text(0.02,0.98,info_txt,transform=ax.transAxes,va='top',fontsize=8,bbox=dict(boxstyle='round,pad=0.4',facecolor='lightblue',alpha=0.8))
     
     plt.draw()
@@ -235,9 +244,9 @@ def connect_to_esp32_func():
         client_socket.settimeout(0.05); is_connected = True; print("✅ ESP32 Connected.")
     except Exception as e: print(f"❌ ESP32 Conn Fail: {e}"); is_connected=False; client_socket=None
 
-INITIAL_GRID_ROW, INITIAL_GRID_COL = 2, 20
+INITIAL_GRID_ROW, INITIAL_GRID_COL = 2, 20 # CHANGE STARTING POS
 rwp_estimate['x'], rwp_estimate['z'] = grid_to_world_center(INITIAL_GRID_ROW, INITIAL_GRID_COL)
-rwp_estimate['theta'] = math.pi # Start West
+rwp_estimate['theta'] = math.pi / 2 # Start North
 crgp_estimated = world_to_grid(rwp_estimate['x'], rwp_estimate['z'])
 
 print(f"Robot init @ grid {crgp_estimated}, est.world ({rwp_estimate['x']:.2f},{rwp_estimate['z']:.2f}), Θ={math.degrees(rwp_estimate['theta']):.0f}°")
@@ -391,19 +400,19 @@ while robot.step(timestep) != -1:
             print(f"Turn {webots_turn_command_active} initiated.")
 
         if webots_internal_turn_phase == 'INITIATE_SPIN':
-            s_i, s_o = -FORWARD_SPEED * TURN_SPEED_FACTOR * 0.55, FORWARD_SPEED * TURN_SPEED_FACTOR * 0.85
+            s_i, s_o = -FORWARD_SPEED * TURN_SPEED_FACTOR * 0.7, FORWARD_SPEED * TURN_SPEED_FACTOR * 1
             next_left_speed, next_right_speed = (s_i, s_o) if webots_turn_command_active == 'turn_left' else (s_o, s_i)
             if current_sim_time - turn_phase_start_time > MIN_INITIAL_SPIN_DURATION:
                 webots_internal_turn_phase = 'SEARCHING_LINE'
                 turn_phase_start_time = current_sim_time
                 print(f"🔍 Search for {webots_turn_command_active}")
         elif webots_internal_turn_phase == 'SEARCHING_LINE':
-            s_i, s_o = -FORWARD_SPEED * TURN_SPEED_FACTOR * 0.5, FORWARD_SPEED * TURN_SPEED_FACTOR * 0.9
+            s_i, s_o = -FORWARD_SPEED * TURN_SPEED_FACTOR * 0.3, FORWARD_SPEED * TURN_SPEED_FACTOR * 0.6
             next_left_speed, next_right_speed = (s_i, s_o) if webots_turn_command_active == 'turn_left' else (s_o, s_i)
             if sensors_on_line:
                 webots_internal_turn_phase = 'ADJUSTING_ON_LINE'
                 turn_phase_start_time = current_sim_time
-                print(f"✅ Line acquired {webots_turn_command_active}")
+                print(f"Line acquired {webots_turn_command_active}")
             elif not TURN_UNTIL_LINE_FOUND and current_sim_time - turn_phase_start_time > MAX_SEARCH_SPIN_DURATION:
                 print(f"Search Timeout {webots_turn_command_active}") # Corrected print
                 webots_internal_turn_phase = 'NONE'
@@ -413,7 +422,7 @@ while robot.step(timestep) != -1:
             m_d = MODERATE_CORRECTION_DIFFERENTIAL * (b / FORWARD_SPEED)
             a_d = AGGRESSIVE_CORRECTION_DIFFERENTIAL * (b / FORWARD_SPEED)
             if not left_gs and center_gs and not right_gs:
-                next_left_speed, next_right_speed = b * 0.3, b * 0.3
+                next_left_speed, next_right_speed = b * 0.6, b * 0.6
                 webots_internal_turn_phase = 'NONE'
                 webots_turn_command_active = None
             elif left_gs and center_gs and not right_gs: next_left_speed,next_right_speed = b-m_d,b
@@ -421,11 +430,11 @@ while robot.step(timestep) != -1:
             elif left_gs and not center_gs and not right_gs: next_left_speed,next_right_speed = b-a_d,b
             elif not left_gs and not center_gs and right_gs: next_left_speed,next_right_speed = b,b-a_d
             elif not sensors_on_line:
-                print(f"❌ Line lost during adjust. Re-search.")
+                print(f"Line lost during adjust. Re-search.")
                 webots_internal_turn_phase = 'SEARCHING_LINE'
                 turn_phase_start_time = current_sim_time
             else:
-                next_left_speed, next_right_speed = b * 0.7, b * 0.7
+                next_left_speed, next_right_speed = b * 0.2, b * 0.2
             
             if current_sim_time - turn_phase_start_time > MAX_ADJUST_DURATION and webots_internal_turn_phase == 'ADJUSTING_ON_LINE':
                 print(f"Adjust Timeout {webots_turn_command_active}") # Corrected print
@@ -445,7 +454,7 @@ while robot.step(timestep) != -1:
         obs_s = f"Obst:{len(detected_obstacles_grid)}" if detected_obstacles_grid else "Null"
         turn_s = f"T:{webots_internal_turn_phase}" if webots_internal_turn_phase!='NONE' else ""
         cmd_d = f"{esp32_command}" if esp32_command==effective_command else f"{esp32_command}→{effective_command}"
-        print(f"T:{current_sim_time:.1f}|ESP:{conn_stat}|Cmd:{cmd_d}|Grid:{crgp_estimated}|L:{line_s}{line_detected}|{obs_s}|{turn_s}")
+        print(f"T:{current_sim_time:.1f}|ESP:{conn_stat}|Status:{cmd_d}|Grid:{crgp_estimated}|L:{line_s}{line_detected}|{obs_s}|{turn_s}")
 
 # --- Cleanup ---
 if client_socket:
